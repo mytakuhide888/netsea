@@ -1,0 +1,45 @@
+version: "3.8"
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: niiya
+      MYSQL_DATABASE: netsea
+      MYSQL_USER: niiya
+      MYSQL_PASSWORD: niiya
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+      
+  web:
+    build: ./web
+    container_name: django_app
+    restart: always
+    environment:
+      - DB_HOST=db
+      - DB_NAME=netsea
+      - DB_USER=niiya
+      - DB_PASSWORD=niiya
+    depends_on:
+      - db
+    volumes:
+      - ./web:/app
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx_proxy
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+
+volumes:
+  mysql_data:
