@@ -1,0 +1,2 @@
+127.0.0.1 - - [21/Feb/2025:01:03:30 +0000] "GET /static/admin/css/base.css HTTP/1.1" 200 0 "-" "curl/7.64.0"
+127.0.0.1 - - [21/Feb/2025:01:07:02 +0000] "GET /static/admin/css/base.css HTTP/1.1" 200 0 "-" "curl/7.64.0"

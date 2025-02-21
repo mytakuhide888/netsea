@@ -1,45 +1,42 @@
-version: "3.8"
+version: '3.8'
+
 services:
   db:
-    image: mysql:8.0
-    container_name: mysql_db
+    image: mysql:5.7
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: niiya
-      MYSQL_DATABASE: netsea
-      MYSQL_USER: niiya
-      MYSQL_PASSWORD: niiya
+      MYSQL_DATABASE: 'django_db'
+      MYSQL_USER: 'niiya'
+      MYSQL_PASSWORD: 'niiya'
+      MYSQL_ROOT_PASSWORD: 'niiya'
     volumes:
       - mysql_data:/var/lib/mysql
-    ports:
-      - "3306:3306"
-      
+
   web:
-    build: ./web
-    container_name: django_app
-    restart: always
-    environment:
-      - DB_HOST=db
-      - DB_NAME=netsea
-      - DB_USER=niiya
-      - DB_PASSWORD=niiya
+    build: .
+    #command: bash -c "sleep 10 && gunicorn --pythonpath /code myproject.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 300 --log-level debug"
+    entrypoint: /code/entrypoint.sh
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/code
+      - static_volume:/code/static
     depends_on:
       - db
-    volumes:
-      - ./web:/app
-    expose:
-      - "8000"
 
   nginx:
-    image: nginx:stable-alpine
-    container_name: nginx_proxy
-    restart: always
+    image: nginx:1.19
     ports:
-      - "80:80"
+      - "8080:80"
+      #- "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - static_volume:/usr/share/nginx/html/static
+      # - ./nginx_logs:/var/log/nginx
     depends_on:
       - web
 
 volumes:
   mysql_data:
+  static_volume:
+  nginx_logs:
