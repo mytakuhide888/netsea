@@ -1,2 +1,0 @@
-172.18.0.1 - - [22/Feb/2025:02:27:53 +0000] "GET /admin/ HTTP/1.1" 200 13876 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-172.18.0.1 - - [22/Feb/2025:02:27:53 +0000] "GET /jet/jsi18n/ HTTP/1.1" 200 3195 "http://localhost:8080/admin/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
