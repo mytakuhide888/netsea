@@ -12,3 +12,20 @@ class NetseaCatCsv(models.Model):
 
     def __str__(self):
         return f"CatID: {self.cat_id}, JAN: {self.jan_cd}"
+
+class NetseaCatList(models.Model):
+    id = models.AutoField(primary_key=True)  # 自動採番の主キー
+    cat_id = models.IntegerField(null=False, blank=False)  # カテゴリID（必須）
+    url = models.TextField(null=True, blank=True)  # カテゴリのURL（ブランク可）
+    cat_name = models.TextField(null=True, blank=True)  # カテゴリ名（ブランク可）
+    cat_level = models.IntegerField(null=True, blank=True)  # カテゴリ階層（ブランク可）
+    topics_path = models.TextField(null=True, blank=True)  # パンくず（ブランク可）
+    cat_1 = models.IntegerField(null=True, blank=True)  # カテゴリ_1（ブランク可）
+    cat_2 = models.IntegerField(null=True, blank=True)  # カテゴリ_2（ブランク可）
+    cat_3 = models.IntegerField(null=True, blank=True)  # カテゴリ_3（ブランク可）
+
+    class Meta:
+        db_table = 'netsea_cat_list'  # テーブル名を指定
+
+    def __str__(self):
+        return f"CatID: {self.cat_id}, Name: {self.cat_name}"
