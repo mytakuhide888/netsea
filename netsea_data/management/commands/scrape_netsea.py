@@ -187,13 +187,26 @@ class Command(BaseCommand):
                     price = int(row[1]) if row[1] else None
                     url = row[2] if row[2] else None
 
-                    NetseaCatCsv.objects.create(
-                        cat_id=cat_id,
-                        jan_cd=jan_cd,
-                        price=price,
+                    # 重複チェックと更新または作成
+                    obj, created = NetseaCatCsv.objects.get_or_create(
                         url=url,
-                        csv_name=csv_filename
+                        defaults={
+                            'cat_id': cat_id,
+                            'jan_cd': jan_cd,
+                            'price': price,
+                            'csv_name': csv_filename,
+                        }
                     )
+                    if not created:
+                        # 重複した場合、既存レコードを更新（updated_at も自動更新）
+                        obj.cat_id = cat_id
+                        obj.jan_cd = jan_cd
+                        obj.price = price
+                        obj.csv_name = csv_filename
+                        obj.save()
+                        self.stdout.write(self.style.WARNING(f'Updated existing record for url: {url}'))
+                    else:
+                        self.stdout.write(self.style.SUCCESS(f'Created new record for url: {url}'))
             self.stdout.write(self.style.SUCCESS(f'Saved CSV data from {csv_filename} to netsea_cat_csv'))
 
     def extract_cat_id(self, url):

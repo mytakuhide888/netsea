@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div id="content-main">
+    <h1>CSVダウンロード</h1>
+    <form method="post" action="">
+        {% csrf_token %}
+        <fieldset class="module aligned">
+            <div class="form-row">
+                <label for="id_start_cat_id">カテゴリID開始番号:</label>
+                <input type="number" name="start_cat_id" id="id_start_cat_id" value="{{ start_cat_id|default:'' }}" required>
+            </div>
+            <div class="form-row">
+                <label for="id_end_cat_id">カテゴリID終了番号:</label>
+                <input type="number" name="end_cat_id" id="id_end_cat_id" value="{{ end_cat_id|default:'' }}" required>
+            </div>
+        </fieldset>
+        <div class="submit-row">
+            <input type="submit" value="ダウンロード実行" class="default">
+        </div>
+    </form>
+
+    {% if running %}
+    <h2>実行ログ</h2>
+    <div id="log-output" style="max-height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: #f9f9f9;">
+        <ul id="log-list"></ul>
+    </div>
+    <script>
+        function updateLog() {
+            fetch('/admin/netsea_data/netseacatlist/csv-download/log/')
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('log-output').innerHTML = data;
+                });
+        }
+        setInterval(updateLog, 2000);  // 2秒ごとに更新
+        updateLog();  // 初回実行
+    </script>
+    {% endif %}
+</div>
+{% endblock %}

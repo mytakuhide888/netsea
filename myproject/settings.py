@@ -58,7 +58,7 @@ ROOT_URLCONF = 'myproject.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -106,6 +106,21 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+JET_SIDE_MENU_ITEMS = [
+    {
+        'label': 'NETSEAデータ取得',
+        'app_label': 'netsea_data',
+        'items': [
+            {'name': 'netseacatlist', 'label': 'カテゴリ一覧'},
+            {'name': 'netseacatcsv', 'label': 'CSVデータ'},
+            {
+                'url': '/admin/netsea_data/netseacatlist/csv-download/',
+                'label': 'CSVダウンロード',
+            },
+        ],
+    },
+    # 既存のメニューがあれば追記
+]
 
 # Internationalization
 # https://docs.djangoproject.com/en/3.2/topics/i18n/
