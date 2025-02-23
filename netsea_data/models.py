@@ -5,7 +5,10 @@ class NetseaCatCsv(models.Model):
     cat_id = models.IntegerField(null=False, blank=False)  # カテゴリID（必須）
     jan_cd = models.BigIntegerField(null=True, blank=True)  # JANコード（ブランク可）
     price = models.IntegerField(null=True, blank=True)  # 仕入れ価格（ブランク可）
-    url = models.TextField(null=True, blank=True)  # 仕入れ元URL（ブランク可）
+    url = models.CharField(max_length=255, null=True, blank=True, unique=True) # 仕入れ元URL（ブランク可）
+    csv_name = models.CharField(max_length=255, null=True, blank=True) # CSVファイル名（ブランク可）
+    created_at = models.DateTimeField(auto_now_add=True)  # 登録日
+    updated_at = models.DateTimeField(auto_now=True)      # 更新日
 
     class Meta:
         db_table = 'netsea_cat_csv'  # テーブル名を指定

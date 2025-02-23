@@ -22,6 +22,8 @@ services:
       - .:/code
       - static_volume:/code/static
       - ./logs:/code/logs
+      - ./csv:/code/csv
+      - ./zip:/code/zip
       - ./logrotate.conf:/code/logrotate.conf
     depends_on:
       - db
