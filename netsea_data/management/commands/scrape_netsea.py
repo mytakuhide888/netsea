@@ -1,11 +1,14 @@
-import requests
-from bs4 import BeautifulSoup
-from django.core.management.base import BaseCommand, CommandError
-from netsea_data.models import NetseaCatList, NetseaCatCsv
 import os
+import time
 import zipfile
 import csv
-import time
+from django.core.management.base import BaseCommand, CommandError
+from netsea_data.models import NetseaCatCsv, NetseaCatList
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 class Command(BaseCommand):
     help = 'Scrape Netsea category data, download/extract CSV for Cat_3 within specified range'
@@ -15,202 +18,218 @@ class Command(BaseCommand):
         parser.add_argument('--end_cat_id', type=int, help='End category ID for processing')
 
     def handle(self, *args, **options):
-        login_url = 'https://www.netsea.jp/login'
-        username = 'doublenuts8'
-        password = 'Maropi888'
-        category_list_url = 'https://www.netsea.jp/category/'
-        download_url = 'https://www.netsea.jp/exhibit_data_download'
-
-        # 引数の取得
         start_cat_id = options['start_cat_id']
         end_cat_id = options['end_cat_id']
         if start_cat_id is None or end_cat_id is None:
             raise CommandError('Please specify --start_cat_id and --end_cat_id')
 
-        session = requests.Session()
-        response = session.get(login_url)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Seleniumの設定
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument('--headless')  # ヘッドレスモード
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        # ダウンロードディレクトリを設定
+        prefs = {'download.default_directory': '/code/downloads'}
+        chrome_options.add_experimental_option('prefs', prefs)
+        driver = webdriver.Chrome(options=chrome_options)
+        wait = WebDriverWait(driver, 10)
 
-        login_form = soup.find('form', action='https://www.netsea.jp/login')
-        if not login_form:
-            self.stdout.write(self.style.WARNING('Already logged in or unexpected page structure'))
-        else:
-            csrf_token = soup.find('input', {'name': '_token'})['value']
-            payload = {
-                'login_id': username,
-                'password': password,
-                '_token': csrf_token,
-                'remember': 'on',
-                'bookmark': 'on'
-            }
-            login_response = session.post(login_url, data=payload)
-            if login_response.status_code == 200 and 'login' not in login_response.url:
-                self.stdout.write(self.style.SUCCESS('Login successful'))
-            else:
-                self.stdout.write(self.style.ERROR(f'Login failed: {login_response.status_code}, URL: {login_response.url}'))
-                return
+        # ログイン処理（必要時のみ）
+        self.ensure_logged_in(driver, wait)
 
-        # カテゴリ一覧を取得
-        category_response = session.get(category_list_url)
-        if category_response.status_code != 200:
-            self.stdout.write(self.style.ERROR(f'Failed to access category list: {category_response.status_code}'))
-            return
-
-        self.stdout.write(self.style.SUCCESS(f'Accessed category list: {category_list_url}'))
-        soup = BeautifulSoup(category_response.text, 'html.parser')
-        self.scrape_categories(soup)
-
-        # ZIP と CSV ディレクトリを作成
-        os.makedirs('/code/zip', exist_ok=True)
-        os.makedirs('/code/csv', exist_ok=True)
-
-        # カテゴリ_3 の URL を範囲指定で取得
+        # カテゴリIDのURLを取得
         cat_3_urls = NetseaCatList.objects.filter(
             cat_level=3,
             cat_id__gte=start_cat_id,
             cat_id__lte=end_cat_id
         ).values_list('url', 'cat_id')
-        
+
+        # ダウンロードディレクトリをクリア
+        download_dir = '/code/downloads'
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+        else:
+            for file in os.listdir(download_dir):
+                os.remove(os.path.join(download_dir, file))
+
+        # 各カテゴリIDを処理
         for url, cat_id in cat_3_urls:
-            self.download_extract_and_save_csv(session, url, download_url, cat_id)
-            self.stdout.write(self.style.SUCCESS(f'Waiting 10 seconds before next download...'))
-            time.sleep(10)  # 10秒待機
+            self.process_category(driver, wait, url, cat_id)
+            time.sleep(5)  # 次の処理前に待機
 
-    def scrape_categories(self, soup):
-        category_headers = soup.find_all('h2', class_='categHd')
-        for header in category_headers:
-            a_tag = header.find('a')
-            if not a_tag:
-                continue
+        driver.quit()
+        self.stdout.write(self.style.SUCCESS('Scraping completed'))
 
-            cat_url = a_tag['href']
-            cat_name = a_tag.text.strip()
-            cat_id = self.extract_cat_id(cat_url)
+    def ensure_logged_in(self, driver, wait):
+        """ログイン状態を確認し、必要に応じてログイン"""
+        login_url = 'https://www.netsea.jp/login'
+        username = 'doublenuts8'  # 実際のユーザー名に置き換え
+        password = 'Maropi888'    # 実際のパスワードに置き換え
 
-            cat_1_obj, created = NetseaCatList.objects.get_or_create(
-                cat_id=cat_id,
-                defaults={'url': cat_url, 'cat_name': cat_name, 'cat_level': 1}
-            )
-            if created:
-                self.stdout.write(self.style.SUCCESS(f'Saved Cat_1: {cat_name} (ID: {cat_id})'))
+        driver.get('https://www.netsea.jp/')  # ログインチェック用のページ
+        try:
+            # 未ログインの場合、ログインリンクを検出
+            login_link = wait.until(EC.presence_of_element_located((By.XPATH, '//a[@href="https://www.netsea.jp/login"]')))
+            #print('未ログイン状態です。ログイン処理を開始します...')
+            self.stdout.write(self.style.SUCCESS(f'未ログイン状態です。ログイン処理を開始します...'))
+            
+            # ログインページに遷移
+            driver.get(login_url)
 
-            categ_list_wrap = header.find_next('div', class_='categListWrap')
-            if categ_list_wrap:
-                categ_blocks = categ_list_wrap.find_all('dl', class_='categListBlock')
-                for block in categ_blocks:
-                    dt_tag = block.find('dt', class_='categListHd')
-                    if dt_tag:
-                        level_2_a = dt_tag.find('a', href=True)
-                        if level_2_a:
-                            level_2_url = level_2_a['href']
-                            level_2_name = level_2_a.text.strip()
-                            level_2_id = self.extract_cat_id(level_2_url)
+            # ユーザー名とパスワードを入力
+            user_input = driver.find_element(By.ID, 'userId')
+            user_input.send_keys(username)
+            pass_input = driver.find_element(By.ID, 'pass')
+            pass_input.send_keys(password)
 
-                            level_2_obj, created = NetseaCatList.objects.get_or_create(
-                                cat_id=level_2_id,
-                                defaults={'url': level_2_url, 'cat_name': level_2_name, 'cat_level': 2, 'cat_1': cat_id}
-                            )
-                            if created:
-                                self.stdout.write(self.style.SUCCESS(f'Saved Cat_2: {level_2_name} (ID: {level_2_id}, Parent: {cat_id})'))
+            # ログインボタンをクリック
+            submit_button = driver.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
+            submit_button.click()
 
-                            dd_tag = block.find('dd')
-                            if dd_tag:
-                                level_3_list = dd_tag.find('ul', class_='categList')
-                                if level_3_list:
-                                    level_3_items = level_3_list.find_all('a', href=True)
-                                    for level_3_a in level_3_items:
-                                        level_3_url = level_3_a['href']
-                                        level_3_name = level_3_a.text.strip()
-                                        level_3_id = self.extract_cat_id(level_3_url)
+            # ログイン成功を待つ（ユーザーIDが表示されるまで）
+            wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'userId')))
+            self.stdout.write(self.style.SUCCESS(f'ログインに成功しました...'))
+            #print('ログインに成功しました')
 
-                                        level_3_obj, created = NetseaCatList.objects.get_or_create(
-                                            cat_id=level_3_id,
-                                            defaults={'url': level_3_url, 'cat_name': level_3_name, 'cat_level': 3, 'cat_1': cat_id, 'cat_2': level_2_id}
-                                        )
-                                        if created:
-                                            self.stdout.write(self.style.SUCCESS(f'Saved Cat_3: {level_3_name} (ID: {level_3_id}, Parent: {level_2_id})'))
+        except TimeoutException:
+            # ログインリンクが見つからない場合、すでにログイン済み
+            self.stdout.write(self.style.ERROR(f'すでにログイン済みか、タイムアウトです...'))
+            #print('すでにログイン済みです')
 
-    def download_extract_and_save_csv(self, session, cat_3_url, download_url, cat_id):
-        # カテゴリ_3 ページにアクセス
-        response = session.get(cat_3_url)
-        if response.status_code != 200:
-            self.stdout.write(self.style.ERROR(f'Failed to access {cat_3_url}: {response.status_code}'))
+    def process_category(self, driver, wait, url, cat_id):
+        """特定のカテゴリIDのページを処理"""
+        try:
+            self.stdout.write(self.style.SUCCESS(f'Accessing URL: {url}'))
+            driver.get(url)
+            self.stdout.write(self.style.SUCCESS(f'Current URL: {driver.current_url}'))
+
+            # ページが完全に読み込まれるまで待機
+            self.stdout.write(self.style.SUCCESS('Waiting for exhibit_dl...'))
+            wait = WebDriverWait(driver, 10) 
+            #wait.until(EC.presence_of_element_located((By.ID, 'materialDlModalTrigger')))
+
+            # モーダルを開く
+            download_button = wait.until(EC.visibility_of_element_located((By.ID, 'exhibit_dl')))
+            self.stdout.write(self.style.SUCCESS('Found exhibit_dl'))
+            self.stdout.write(self.style.SUCCESS('Clicking download button...'))
+            download_button.click()
+
+            # モーダルが表示されるまで待機
+            self.stdout.write(self.style.SUCCESS('Waiting for modal...'))
+            modal = wait.until(EC.visibility_of_element_located((By.ID, 'materialDlModal')))
+            self.stdout.write(self.style.SUCCESS('Modal is visible'))
+
+            # ダウンロードオプションを選択（例: 差分王向け「商品情報(CSV)のみ」）
+            self.stdout.write(self.style.SUCCESS('Selecting radio button...'))
+            time.sleep(2)
+
+            # ラジオボタンを選択（JavaScriptで確実にクリック）
+            radio_button = driver.find_element(By.ID, 'radio2_1')
+            driver.execute_script("arguments[0].click();", radio_button)
+            """
+            radio_button = wait.until(EC.element_to_be_clickable((By.ID, 'radio2_1')))
+            self.stdout.write(self.style.SUCCESS('radio2_1 is clickable'))
+            #radio_button = modal.find_element(By.ID, 'radio2_1')
+            radio_button.click()
+            """
+
+            # ダウンロードを実行
+            self.stdout.write(self.style.SUCCESS('Clicking submit button...'))
+            #submit_button = modal.find_element(By.ID, 'exhibit_dl_submit')
+            submit_button = driver.find_element(By.ID, 'exhibit_dl_submit')
+            submit_button.click()
+
+            # ダウンロード完了を待つ（ディレクトリ監視）
+            self.stdout.write(self.style.SUCCESS('Waiting for download...'))
+            download_dir = '/code/downloads'
+            max_wait = 30  # 最大待機時間（秒）
+            elapsed = 0
+            zip_file_path = None
+            while elapsed < max_wait:
+                zip_files = [f for f in os.listdir(download_dir) if f.endswith('.zip')]
+                if zip_files:
+                    zip_file_path = os.path.join(download_dir, zip_files[0])
+                    break
+                time.sleep(1)
+                elapsed += 1
+            if not zip_file_path:
+                raise Exception(f"Download timeout for category ID {cat_id}")
+
+            # モーダルが自動で閉じるので、閉じる処理は不要
+            self.stdout.write(self.style.SUCCESS('Download completed, modal closed automatically'))
+
+            # ダウンロードしたファイルを処理
+            self.stdout.write(self.style.SUCCESS('Handling downloaded file...'))
+            self.handle_downloaded_file(cat_id)
+
+            self.stdout.write(self.style.SUCCESS(f'Processed category ID {cat_id}'))
+        except TimeoutException as e:
+            self.stdout.write(self.style.ERROR(f'Timeout while processing {url}: {str(e)}'))
+            with open(f'page_source_timeout_{cat_id}.html', 'w') as f:
+                f.write(driver.page_source)
+        except NoSuchElementException as e:
+            self.stdout.write(self.style.ERROR(f'Element not found while processing {url}: {str(e)}'))
+            with open(f'page_source_element_{cat_id}.html', 'w') as f:
+                f.write(driver.page_source)
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Unexpected error while processing {url}: {str(e)}'))
+            with open(f'page_source_unexpected_{cat_id}.html', 'w') as f:
+                f.write(driver.page_source)
+
+    def handle_downloaded_file(self, cat_id):
+        """ダウンロードしたZIPファイルを処理"""
+        download_dir = '/code/downloads'
+        # ダウンロードされたZIPファイルを取得（最新のファイルを使用）
+        zip_files = [f for f in os.listdir(download_dir) if f.endswith('.zip')]
+        if not zip_files:
+            self.stdout.write(self.style.ERROR(f'No ZIP file found for cat_id {cat_id}'))
             return
+        zip_path = os.path.join(download_dir, zip_files[0])  # 最新のZIPファイルを使用
 
-        soup = BeautifulSoup(response.text, 'html.parser')
-        form = soup.find('form', id='inputForm')
-        if not form:
-            self.stdout.write(self.style.ERROR(f'Form not found in {cat_3_url}'))
-            return
-
-        # CSRF トークンと exhibit_ids を取得
-        csrf_token = form.find('input', {'name': '_token'})['value']
-        exhibit_ids = [input_tag['value'] for input_tag in form.find_all('input', {'name': 'exhibit_ids[]'})]
-
-        # CSV ダウンロードのリクエスト
-        payload = {
-            '_token': csrf_token,
-            'd_mode': '3',
-            'exhibit_ids[]': exhibit_ids
-        }
-        csv_response = session.post(download_url, data=payload)
-        if csv_response.status_code != 200:
-            self.stdout.write(self.style.ERROR(f'Failed to download ZIP: {csv_response.status_code}'))
-            return
-
-        # ZIP ファイルを保存
-        zip_filename = f'/code/zip/cat_3_{cat_id}.zip'
-        with open(zip_filename, 'wb') as f:
-            f.write(csv_response.content)
-        self.stdout.write(self.style.SUCCESS(f'Downloaded ZIP for {cat_3_url} to {zip_filename}'))
-
-        # ZIP を展開して CSV を直接 /code/csv/ に保存
+        # CSV を展開
         csv_dir = '/code/csv'
-        with zipfile.ZipFile(zip_filename, 'r') as zip_ref:
+        if not os.path.exists(csv_dir):
+            os.makedirs(csv_dir)
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             for file_info in zip_ref.infolist():
                 if file_info.filename.endswith('.csv'):
-                    csv_filename = f'cat_3_{cat_id}.csv'  # サブディレクトリを避けるために固定名
+                    csv_filename = f'cat_3_{cat_id}.csv'
                     zip_ref.extract(file_info, csv_dir)
                     extracted_path = os.path.join(csv_dir, file_info.filename)
                     target_path = os.path.join(csv_dir, csv_filename)
                     os.rename(extracted_path, target_path)
-        self.stdout.write(self.style.SUCCESS(f'Extracted CSV to {target_path}'))
+                    self.stdout.write(self.style.SUCCESS(f'Extracted CSV to {target_path}'))
 
-        # CSV を読み込んで netsea_cat_csv に保存
-        csv_path = target_path
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            next(reader)  # ヘッダーをスキップ（必要に応じて確認）
-            for row in reader:
-                if len(row) >= 3:  # 最低 3 列あることを確認
-                    jan_cd = int(row[0]) if row[0] else None
-                    price = int(row[1]) if row[1] else None
-                    url = row[2] if row[2] else None
+                    # CSV を読み込んで netsea_cat_csv に保存
+                    with open(target_path, 'r', encoding='utf-8') as f:
+                        reader = csv.reader(f)
+                        next(reader)  # ヘッダーをスキップ
+                        for row in reader:
+                            if len(row) >= 3:
+                                jan_cd = int(row[0]) if row[0] else None
+                                price = int(row[1]) if row[1] else None
+                                url = row[2] if row[2] else None
 
-                    # 重複チェックと更新または作成
-                    obj, created = NetseaCatCsv.objects.get_or_create(
-                        url=url,
-                        defaults={
-                            'cat_id': cat_id,
-                            'jan_cd': jan_cd,
-                            'price': price,
-                            'csv_name': csv_filename,
-                        }
-                    )
-                    if not created:
-                        # 重複した場合、既存レコードを更新（updated_at も自動更新）
-                        obj.cat_id = cat_id
-                        obj.jan_cd = jan_cd
-                        obj.price = price
-                        obj.csv_name = csv_filename
-                        obj.save()
-                        self.stdout.write(self.style.WARNING(f'Updated existing record for url: {url}'))
-                    else:
-                        self.stdout.write(self.style.SUCCESS(f'Created new record for url: {url}'))
-            self.stdout.write(self.style.SUCCESS(f'Saved CSV data from {csv_filename} to netsea_cat_csv'))
+                                obj, created = NetseaCatCsv.objects.get_or_create(
+                                    url=url,
+                                    defaults={
+                                        'cat_id': cat_id,
+                                        'jan_cd': jan_cd,
+                                        'price': price,
+                                        'csv_name': csv_filename,
+                                    }
+                                )
+                                if not created:
+                                    obj.cat_id = cat_id
+                                    obj.jan_cd = jan_cd
+                                    obj.price = price
+                                    obj.csv_name = csv_filename
+                                    obj.save()
+                                    self.stdout.write(self.style.WARNING(f'Updated existing record for url: {url}'))
+                                else:
+                                    self.stdout.write(self.style.SUCCESS(f'Created new record for url: {url}'))
+                        self.stdout.write(self.style.SUCCESS(f'Processed CSV data from {csv_filename} into netsea_cat_csv'))
 
-    def extract_cat_id(self, url):
-        from urllib.parse import urlparse, parse_qs
-        query = urlparse(url).query
-        params = parse_qs(query)
-        return int(params.get('category_id', [0])[0])
+        # ZIPファイルを削除
+        os.remove(zip_path)

@@ -1,0 +1,12 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div>
+    <h1>カテゴリ一覧取得ログ</h1>
+    <pre>
+{% for line in output %}
+{{ line }}
+{% endfor %}
+    </pre>
+    <p><a href="{% url 'admin:netsea_data_netseacatlist_category_scrape' %}">戻る</a></p>
+</div>
+{% endblock %}

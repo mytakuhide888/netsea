@@ -5,9 +5,12 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /code
 
+ENV PATH="/usr/lib/chromium:${PATH}"
 COPY requirements.txt /code/
 RUN pip install -r requirements.txt
-RUN apt-get update && apt-get install -y default-mysql-client logrotate
+RUN apt-get update && apt-get install -y \
+    default-mysql-client logrotate \
+    chromium chromium-driver
 
 RUN adduser --disabled-password --gecos "" niiya
 #RUN echo "niiya ALL=(ALL) NOPASSWD: /usr/sbin/logrotate" >> /etc/sudoers.d/niiya

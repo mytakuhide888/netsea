@@ -85,6 +85,9 @@ DATABASES = {
         'PASSWORD': 'niiya',
         'HOST': 'db',
         'PORT': '3306',
+        'OPTIONS': {
+            'charset': 'utf8mb4',  # UTF-8 の完全版を指定
+        },
     }
 }
 
@@ -117,7 +120,10 @@ JET_SIDE_MENU_ITEMS = [
                 'url': '/admin/netsea_data/netseacatlist/csv-download/',
                 'label': 'CSVダウンロード',
             },
-        ],
+            {
+                'url': '/admin/netsea_data/netseacatlist/category-scrape/',
+                'label': 'カテゴリ一覧取得',  # 新しいメニュー項目
+            },        ],
     },
     # 既存のメニューがあれば追記
 ]

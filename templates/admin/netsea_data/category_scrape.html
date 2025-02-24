@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div>
+    <h1>NETSEA カテゴリ一覧取得</h1>
+    {% if running %}
+        <p>カテゴリ一覧の取得を開始しました。処理が完了するまでしばらくお待ちください。</p>
+        <p><a href="{% url 'admin:netsea_data_netseacatlist_category_scrape_log' %}">ログを確認</a></p>
+    {% else %}
+        <form method="post">
+            {% csrf_token %}
+            <p>NETSEA のカテゴリ一覧を取得します。実行ボタンを押してください。</p>
+            <input type="submit" value="実行">
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

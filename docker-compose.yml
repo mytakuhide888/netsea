@@ -11,6 +11,7 @@ services:
       MYSQL_ROOT_PASSWORD: 'niiya'
     volumes:
       - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   web:
     build: .
@@ -25,6 +26,7 @@ services:
       - ./csv:/code/csv
       - ./zip:/code/zip
       - ./logrotate.conf:/code/logrotate.conf
+      - ./downloads:/code/downloads
     depends_on:
       - db
 
